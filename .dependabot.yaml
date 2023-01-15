@@ -1,0 +1,35 @@
+# .dependabot.yml
+version: apddirect.com/v1beta1
+kind: DependabotConfig
+analyses:
+
+  # Name of the package manager you'd like to do the update for. Options are:
+  # - bundler
+  # - pip (includes pipenv)
+  # - npm_and_yarn
+  # - maven
+  # - gradle
+  # - cargo
+  # - hex
+  # - composer
+  # - nuget
+  # - dep
+  # - go_modules
+  # - elm``
+  # - submodules
+  # - docker
+  # - terraform
+  - ecosystem: "gradle"
+
+    # (optional) Where to find the package-ecosystem's lock file & manifest (Default: /)
+    directory: "/"
+
+  - ecosystem: "docker"
+    directory: "/"
+  - ecosystem: "go_modules"
+
+    # (optional) Where to find the package-ecosystem's lock file & manifest (Default: /)
+    directory: "/hello-world-service-smoketest"
+
+  - ecosystem: "docker"
+    directory: "/hello-world-service-smoketest"

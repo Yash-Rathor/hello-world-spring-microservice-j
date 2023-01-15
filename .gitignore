@@ -1,0 +1,13 @@
+.gradle
+.idea
+hello-world.iml
+build
+hello-world-service/build
+.classpath
+.project
+.settings/
+hello-world-service/.classpath
+hello-world-service/.project
+hello-world-service/.settings/
+hello-world-service/bin/
+hello-world-contracttest/out/

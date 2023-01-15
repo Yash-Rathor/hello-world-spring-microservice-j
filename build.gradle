@@ -1,0 +1,220 @@
+/**
+ *
+ */
+buildscript {
+	ext {
+		springBootCloudVersion = 'Greenwich.SR3'
+		lombokVersion = '1.18.10'
+		restAssuredVersion = '3.0.7'
+		springRestDocsVersion = '1.2.1.RELEASE'
+		micrometerVersion = '1.3.0'
+		swaggerVersion = "2.2.2"
+		springBootVersion = "2.1.11.RELEASE"
+		springSpockVersion = "1.2-groovy-2.4"
+		appconfigrVersion="1.0.67"
+    providerPactVersion = "4.0.10"
+	}
+	repositories {
+		maven { url "https://artifactory.appdirect.tools/artifactory/repo" }
+		mavenCentral()
+		jcenter()
+		maven { url "https://plugins.gradle.org/m2/" }
+	}
+	dependencies {
+		classpath("io.swagger:swagger-codegen:${swaggerVersion}")
+	}
+}
+
+plugins {
+	id 'java'
+	id 'groovy'
+	id 'idea'
+	id 'io.spring.dependency-management' version '1.0.8.RELEASE'
+}
+
+apply plugin: 'maven-publish'
+
+group = 'com.appdirect.helloworld'
+version = project.properties['version'] ? project.properties['version'].toString() : 'local'
+
+/**
+ * Defines extra properties for the project
+ */
+ext {
+	artifactoryUser = project.properties['artifactory.user'].toString()
+	artifactoryPassword = project.properties['artifactory.password'].toString()
+	minimumTestCoverage = 0.0 // TODO increase this to gate your deployments
+}
+
+allprojects {
+	apply plugin: 'jacoco'
+
+  repositories {
+    maven { url "https://artifactory.appdirect.tools/artifactory/repo" }
+    mavenCentral()
+    jcenter()
+    maven { url "https://plugins.gradle.org/m2/" }
+  }
+
+	jacoco {
+		toolVersion = '0.8.4'
+	}
+}
+
+/**
+ * Configures the sub-projects of this project.
+ * See settings.gradle for more information.
+ */
+subprojects {
+	apply plugin: "groovy"
+	apply plugin: 'idea'
+
+	group project.parent.group
+	version project.parent.version
+	sourceCompatibility = 11
+
+
+	jacocoTestReport {
+		additionalSourceDirs.from = sourceSets.main.allSource.srcDirs
+		sourceDirectories.from = sourceSets.main.allSource.srcDirs
+		classDirectories.from =  sourceSets.main.output
+
+		reports {
+			csv.enabled false
+			html.enabled true
+			xml.enabled true
+		}
+	}
+
+	jacocoTestCoverageVerification {
+		violationRules {
+			rule {
+				limit {
+					minimum = minimumTestCoverage
+				}
+			}
+		}
+	}
+
+	test {
+	}
+
+	/**
+	 * ********************************************************************************
+	 * Integration tests
+	 * ********************************************************************************
+	 */
+	task integTest(type: Test) {
+		include "**/*IntegrationTest*"
+		exclude "**/*UnitTest*"
+    exclude "**/*ContractTest*"
+	}
+
+  /**
+   * ********************************************************************************
+   * Contract tests
+   * ********************************************************************************
+   */
+  task contractTest(type: Test, dependsOn: testClasses) {
+    useJUnitPlatform ()
+    include "**/*ContractTest*"
+    exclude "**/*IT*"
+    exclude "**/*Test"
+
+    group = 'Verification'
+    systemProperty 'pactbroker.host', project.properties['pactbroker.host']
+    systemProperty 'pactbroker.port', project.properties['pactbroker.port']
+    systemProperty 'pactbroker.scheme', project.properties['pactbroker.scheme']
+    systemProperty 'pactbroker.tags', project.properties['pactbroker.tags']
+    systemProperty 'pact.provider.version', project.properties["provider.version"]
+    doFirst {
+      println("Verifying Pact Contracts")
+    }
+  }
+
+	test.include "**/*UnitTest*"
+	test.exclude "**/*IntegrationTest*"
+  test.exclude "**/*ContractTest*"
+	test.finalizedBy project.tasks.jacocoTestReport
+}
+
+
+
+/**
+ * Jar configuration
+ */
+jar {
+	baseName = 'hello-world-service'
+	version = project.version
+}
+
+/** ************************************************************************
+ * 					PUBLISHING
+ *  ************************************************************************
+ */
+publishing.repositories {
+	maven {
+		name "appdirectArtifactory"
+		url "https://artifactory.appdirect.tools/artifactory/libs-${project.version.endsWith('-SNAPSHOT') ? 'snapshot' : 'release'}-local"
+		credentials {
+			username = artifactoryUser
+			password = artifactoryPassword
+		}
+	}
+}
+
+/** ************************************************************************
+ * 					PUBLISHING
+ *  ************************************************************************
+ */
+
+task jacocoRootReport(type: JacocoReport, group: 'Coverage reports') {
+	description = 'Generates an aggregate report from all subprojects'
+
+	dependsOn subprojects.test
+
+	additionalSourceDirs.from = sourceSets.main.allSource.srcDirs
+	sourceDirectories.from = sourceSets.main.allSource.srcDirs
+	classDirectories.from = sourceSets.main.output
+	executionData.from = files(subprojects.jacocoTestReport.executionData).filter { f -> f.exists() }
+
+	reports {
+		html.enabled = true // human readable
+		xml.enabled = true // required by coveralls
+	}
+}
+
+task jacocoMerge(type: JacocoMerge) {
+	dependsOn project(":hello-world-service").test, project(":hello-world-service").integTest
+	executionData project(":hello-world-service").tasks.withType(Test).matching { task -> !task.name.equals( 'contractTest' ) }
+}
+
+task codeCoverage {
+	dependsOn jacocoRootReport, jacocoMerge
+}
+
+task testReport(type: TestReport) {
+	destinationDir = file("$buildDir/reports/allTests")
+	// Include the results from the `test` task in all subprojects
+	reportOn project(":hello-world-service").test
+	reportOn project(":hello-world-service").integTest
+}
+
+/** ************************************************************************
+ * 					SHARED/COMMON TASKS
+ *  ************************************************************************
+ */
+
+/**
+ * Print relevant information about this project
+ */
+task printMetadata {
+	description "Prints the metadata information for this build."
+	doLast {
+		print """
+		Project group: ${project.group}
+		Project name: ${project.name}
+		Project version: ${project.version}
+		"""
+	}
+}

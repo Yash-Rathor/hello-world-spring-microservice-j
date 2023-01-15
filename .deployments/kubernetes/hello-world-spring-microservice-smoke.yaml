@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: hello-world-spring-microservice-smoke
+  namespace: {{ .Values.namespace }}
+  annotations:
+    appdirect.com/metadata.owner: "dev-productivity@appdirect.com"
+    appdirect.com/metadata.slack: "#team-need4speed"
+  labels:
+    ad-app: hello-world-spring-microservice
+spec:
+  metrics:
+    - name: smoke
+      provider:
+        job:
+          spec:
+            backoffLimit: 0
+            activeDeadlineSeconds: 300
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: hello-world-spring-microservice-smoke
+                    image: docker.appdirect.tools/hello-world-spring-microservice/hello-world-spring-microservice-smoke:{{ .Values.imageVersion }}
+                    resources:
+                      limits:
+                        cpu: 100m
+                        memory: 64Mi
+                      requests:
+                        cpu: 100m
+                        memory: 32Mi
+                    securityContext:
+                      readOnlyRootFilesystem: true
+                      runAsNonRoot: true
+                      runAsUser: 1000
+                    env:
+                      - name: BASE_URL
+                        value: "http://hello-world-spring-microservice-preview"

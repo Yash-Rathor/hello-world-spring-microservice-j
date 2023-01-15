@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hello-world-spring-microservice-smoke-test
+  namespace: default
+  annotations:
+    appdirect.com/metadata.github: https://github.com/AppDirect/hello-world-spring-microservice
+    appdirect.com/metadata.owner: dev-productivity@appdirect.com
+    appdirect.com/deploy.smokeTest: "true"
+  labels:
+    ad-app: hello-world-spring-microservice-smoke-test
+spec:
+  template:
+    spec:
+      containers:
+      - name: hello-world-spring-microservice-smoke-test
+        image: docker.appdirect.tools/hello-world-spring-microservice/hello-world-spring-microservice-smoke
+        resources:
+          limits:
+            cpu: 100m
+            memory: 64Mi
+          requests:
+            cpu: 100m
+            memory: 32Mi
+        env:
+          - name: BASE_URL
+            value: "http://hello-world-spring-microservice"
+      restartPolicy: Never

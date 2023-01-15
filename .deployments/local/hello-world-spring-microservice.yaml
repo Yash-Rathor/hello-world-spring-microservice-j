@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-world-spring-microservice
+  namespace: default
+  labels:
+    ad-app: hello-world-spring-microservice
+  annotations:
+    appdirect.com/metadata.github: https://github.com/AppDirect/hello-world-spring-microservice
+    appdirect.com/metadata.owner: dev-productivity@appdirect.com
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  revisionHistoryLimit: 5
+  replicas: 2
+  selector:
+    matchLabels:
+      ad-app: hello-world-spring-microservice
+  progressDeadlineSeconds: 120
+  template:
+    metadata:
+      labels:
+        ad-app: hello-world-spring-microservice
+    spec:
+      containers:
+      - name: hello-world-spring-microservice
+        image: docker.appdirect.tools/hello-world-spring-microservice/hello-world-spring-microservice
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+        resources:
+          requests:
+            cpu: 200m
+            memory: 100Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        env:
+          - name: JAVA_OPTS
+            value: -Xms256M -Xmx256M -XX:MaxMetaspaceSize=64M
+
+        ports:
+        - containerPort: 9090
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9091
+            scheme: HTTP
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9091
+            scheme: HTTP
+          initialDelaySeconds: 20
+          timeoutSeconds: 10
+        volumeMounts:
+         - mountPath: /tmp
+           name: tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-world-spring-microservice
+  namespace: default
+  labels:
+    ad-app: hello-world-spring-microservice
+spec:
+  selector:
+    ad-app: hello-world-spring-microservice
+  ports:
+    - name: http-port
+      port: 80
+      targetPort: 9090
+

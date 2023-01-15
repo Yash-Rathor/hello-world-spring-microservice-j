@@ -1,0 +1,177 @@
+plugins {
+    id "org.springframework.boot" version "2.1.11.RELEASE"
+    id 'io.spring.dependency-management'
+}
+
+
+configurations {
+	generatedCompile
+}
+
+configurations.all {
+	exclude group: "org.slf4j", module: "log4j-over-slf4j"
+}
+
+dependencies {
+	compileOnly("org.projectlombok:lombok:${lombokVersion}")
+  annotationProcessor("org.projectlombok:lombok:${lombokVersion}")
+
+	runtime("io.micrometer:micrometer-registry-prometheus:${micrometerVersion}")
+	compile("org.springframework.boot:spring-boot-starter-web:${springBootVersion}")
+	compile("org.springframework.boot:spring-boot-starter-actuator:${springBootVersion}")
+
+	compile('net.logstash.logback:logstash-logback-encoder:3.5')
+	compile("com.appdirect.appconfigr:appconfigr-javasdk-spring:${appconfigrVersion}")
+	compile("org.springframework.cloud:spring-cloud-sleuth-zipkin:2.1.6.RELEASE")
+	compile("org.springframework.cloud:spring-cloud-sleuth-core:2.1.6.RELEASE")
+	compile("org.springframework.cloud:spring-cloud-starter-openfeign:2.1.4.RELEASE")
+
+	// test dependencies
+	testCompile("org.springframework.boot:spring-boot-starter-test")
+	testCompile("io.rest-assured:rest-assured:${restAssuredVersion}")
+	testCompile("org.springframework.restdocs:spring-restdocs-core:${springRestDocsVersion}")
+	testCompile("org.springframework.restdocs:spring-restdocs-restassured:${springRestDocsVersion}")
+	testCompile("org.springframework.restdocs:spring-restdocs-restassured:${springRestDocsVersion}")
+
+	testCompile "org.spockframework:spock-spring:${springSpockVersion}"
+	testCompile "org.spockframework:spock-core:${springSpockVersion}"
+	testCompile "org.springframework.boot:spring-boot-starter-test:${springBootVersion}"
+	testCompile "org.springframework.boot:spring-boot:${springBootVersion}"
+
+  testImplementation("org.junit.jupiter:junit-jupiter-api:5.3.2")
+  testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.3.2")
+  testImplementation("au.com.dius:pact-jvm-provider-junit5-spring:${providerPactVersion}")
+  testImplementation("au.com.dius:pact-jvm-provider-junit5:${providerPactVersion}")
+  testImplementation("au.com.dius:pact-jvm-provider:${providerPactVersion}")
+  testCompile group: 'com.google.code.gson', name: 'gson', version: '2.8.6'
+
+	generatedCompile "org.springframework.boot:spring-boot-starter-data-rest:${springBootVersion}"
+	generatedCompile 'io.springfox:springfox-swagger2:2.5.0'
+	generatedCompile 'io.springfox:springfox-swagger-ui:2.5.0'
+
+}
+
+
+dependencyManagement {
+  imports {
+    mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springBootCloudVersion}"
+  }
+}
+
+sourceSets.main.java.srcDirs = ['src/main/java','src/generated/java']
+sourceSets.test.groovy.srcDirs = ['src/test/groovy']
+sourceSets {
+	generated {
+		compileClasspath = configurations.generatedCompile
+	}
+	main {
+		configurations.compileClasspath
+    configurations.runtimeClasspath
+	}
+	test {
+      configurations.compileClasspath
+      configurations.runtimeClasspath
+	}
+}
+
+compileGeneratedJava.dependsOn "generateApi"
+classes.dependsOn generatedClasses
+compileJava.dependsOn compileGeneratedJava
+
+ideaModule.dependsOn "generateApi"
+
+// Add Application and Version to MANIFEST.MF (for the banner)
+jar {
+    manifest {
+        attributes 'Implementation-Title'  : 'hello-world',
+                   'Implementation-Version': project.version
+    }
+}
+
+/**
+ * ********************************************************************************
+ * Spring Boot Configuration
+ * ********************************************************************************
+ */
+
+springBoot {
+	buildInfo {
+		properties {
+			additional = [
+					'version': project.version
+			]
+		}
+	}
+	mainClassName = 'com.appdirect.helloworld.HelloWorldApplication'
+}
+
+bootRun {
+	// passing system property arguments to Spring Boot.
+	systemProperties = System.properties
+}
+
+bootJar {
+	mainClassName = 'com.appdirect.helloworld.HelloWorldApplication'
+}
+
+jar {
+	from sourceSets.generated.output
+}
+
+/**
+ * ********************************************************************************
+ * maven-publish plugin configuration
+ * ********************************************************************************
+ */
+def applicationPublishedJar = "hello-world-service-${project.version.toString()}.jar"
+
+build.doLast {
+	copy {
+		from "${project.buildDir}/libs/${applicationPublishedJar}"
+		into "${rootProject.buildDir}/libs/"
+	}
+}
+
+publishing.publications {
+	applicationJar(MavenPublication) {
+		groupId project.group
+		artifactId "hello-world-service"
+		version "${project.version}"
+		artifact file("${rootProject.buildDir}/libs/${applicationPublishedJar}")
+	}
+}
+
+
+/**
+ * ********************************************************************************
+ * Swagger API Code Generation
+ * ********************************************************************************
+ */
+
+import io.swagger.codegen.config.CodegenConfigurator
+import io.swagger.codegen.DefaultGenerator
+
+def swaggerSourceFile = 'src/main/resources/api-spec.yml'
+def swaggerTargetFolder = 'src/generated/java'
+
+task generateApi {
+	inputs.file("$projectDir/$swaggerSourceFile")
+	outputs.dir("$projectDir/$swaggerTargetFolder")
+	doLast {
+		def config = new CodegenConfigurator()
+		config.setInputSpec("file:///$projectDir/$swaggerSourceFile")
+		config.setOutputDir("$projectDir")
+		config.setLang('spring')
+		config.setAdditionalProperties([
+				'interfaceOnly' : 'true',
+				'apiPackage'    : 'com.appdirect.helloworld.api',
+				'modelPackage'  : 'com.appdirect.helloworld.model',
+				'sourceFolder'  : swaggerTargetFolder
+		])
+		new DefaultGenerator().opts(config.toClientOptInput()).generate()
+	}
+}
+
+clean.doFirst {
+	delete("${projectDir}/$swaggerTargetFolder")
+}

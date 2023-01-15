@@ -1,0 +1,6 @@
+src/generated
+out
+build
+README.md
+pom.xml
+hello-world-contracttest/build

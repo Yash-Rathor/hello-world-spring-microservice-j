@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+	<contextName>hello-world-spring-microservice</contextName>
+	<springProperty scope="context" name="app.name" source="info.build.name"/>
+	<include resource="org/springframework/boot/logging/logback/defaults.xml" />
+
+	<contextListener class="ch.qos.logback.classic.jul.LevelChangePropagator">
+		<resetJUL>true</resetJUL>
+	</contextListener>
+
+	<appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+		<layout class="ch.qos.logback.classic.PatternLayout">
+			<Pattern>
+				%clr(%date{ISO8601}){faint}[app=%contextName][trace-id=%X{dd.trace_id:-}][span-id=%X{dd.span_id:-}][thread=%thread][level=%clr(%level)][logger=%clr(%logger{1}){cyan}]: %message%n
+			</Pattern>
+		</layout>
+	</appender>
+
+	<root level="INFO">
+		<appender-ref ref="STDOUT" />
+	</root>
+</configuration>

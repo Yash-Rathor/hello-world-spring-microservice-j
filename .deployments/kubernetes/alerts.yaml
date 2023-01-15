@@ -1,0 +1,120 @@
+---
+apiVersion: o11y.appdirect.com/v1
+kind: Alert
+metadata:
+  name: crashbackloop-alert-hello-world-spring
+  namespace: '{{ .Values.namespace }}'
+  annotations: 
+    cd.appdirect.com/repo.name: hello-world-spring-microservice
+  labels:
+    ad-app: hello-world-spring-microservice
+spec:
+  # Add fields here
+  type: pods-crashloopbackoff
+  target:
+      kind: rollout ## or deployment
+      name: hello-world-spring-microservice
+  notification:
+    slack: "observability-alerts" ## mandatory
+    message: "Pods in crashloopback"
+  threshold:
+    critical: "1"
+    warning: ""
+    duration: 5m
+
+---
+apiVersion: o11y.appdirect.com/v1
+kind: Alert
+metadata:
+  name: higher-error-rate-alert-hello-world-spring
+  namespace: '{{ .Values.namespace }}'
+  annotations: 
+    cd.appdirect.com/repo.name: hello-world-spring-microservice
+  labels:
+    ad-app: hello-world-spring-microservice
+spec:
+  # Add fields here
+  type: higher-error-rate
+  target:
+      kind: rollout ## or rollout
+      name: hello-world-spring-microservice
+  notification:
+    slack: "observability-alerts-test" ## mandatory
+    message: "Pod has the high Error Rate"
+  threshold:
+    critical: "0.05"
+    warning: ""
+    duration: 10m
+
+---
+apiVersion: o11y.appdirect.com/v1
+kind: Alert
+metadata:
+  name: high-latency-hello-world-spring
+  namespace: '{{ .Values.namespace }}'
+  annotations: 
+    cd.appdirect.com/repo.name: hello-world-spring-microservice
+  labels:
+    ad-app: hello-world-spring-microservice
+spec:
+  # Add fields here
+  type: high-latency
+  target:
+      kind: rollout ## or rollout
+      name: hello-world-spring-microservice
+  notification:
+    slack: "observability-alerts" ## mandatory
+    message: "High latency is observed for this service"
+  threshold:
+    critical: "1"
+    warning: ""
+    duration: 10m
+
+---
+apiVersion: o11y.appdirect.com/v1
+kind: Alert
+metadata:
+  name: oomkilled-alert-hello-world-spring
+  namespace: '{{ .Values.namespace }}'
+  annotations: 
+    cd.appdirect.com/repo.name: hello-world-spring-microservice
+  labels:
+    ad-app: hello-world-spring-microservice
+spec:
+  # Add fields here
+  type: oom-killed
+  target:
+      kind: rollout ## or rollout
+      name: hello-world-spring-microservice
+  notification:
+    slack: "observability-alerts" ## mandatory
+    message: "Containers killed with OOM"
+  threshold:
+    critical: "1"
+    warning: ""
+    duration: 5m
+
+---
+apiVersion: o11y.appdirect.com/v1
+kind: Alert
+metadata:
+  name: pods-down-alert-hello-world-spring
+  namespace: '{{ .Values.namespace }}'
+  annotations: 
+    cd.appdirect.com/repo.name: hello-world-spring-microservice
+  labels:
+    ad-app: hello-world-spring-microservice
+spec:
+  # Add fields here
+  type: pods-down
+  target:
+      kind: rollout ## or rollout
+      name: hello-world-spring-microservice
+  notification:
+    slack: "observability-alerts" ## mandatory
+    message: Pods down for the deployment.
+    pagerduty: abc
+  threshold:
+    critical: "0"
+    warning: ""
+    duration: 5m

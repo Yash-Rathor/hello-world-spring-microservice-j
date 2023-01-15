@@ -1,0 +1,37 @@
+version: "3.4"
+
+services:
+  hello-world-spring-microservice-development:
+    build:
+      context: .
+      target: development
+      args:
+        version: ${VERSION:-local}
+    image: docker.appdirect.tools/hello-world-spring-microservice/hello-world-spring-microservice-development:${VERSION:-local}
+
+  hello-world-spring-microservice:
+    build:
+      context: .
+      target: production
+      args:
+        version: ${VERSION:-local}
+    image: docker.appdirect.tools/hello-world-spring-microservice/hello-world-spring-microservice:${VERSION:-local}
+    ports:
+      - "9090"
+      - "9091"
+
+  hello-world-spring-microservice-smoke-development:
+    build:
+      context: hello-world-service-smoketest
+      target: development
+    image: docker.appdirect.tools/hello-world-spring-microservice/hello-world-spring-microservice-smoke-development:${VERSION:-local}
+
+  hello-world-spring-microservice-smoke:
+    build:
+      context: hello-world-service-smoketest
+      target: production
+    image: docker.appdirect.tools/hello-world-spring-microservice/hello-world-spring-microservice-smoke:${VERSION:-local}
+    depends_on:
+      - hello-world-spring-microservice
+    environment:
+      - BASE_URL=http://hello-world-spring-microservice:9090

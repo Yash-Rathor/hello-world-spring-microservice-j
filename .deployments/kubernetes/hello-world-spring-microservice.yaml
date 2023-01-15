@@ -1,0 +1,222 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-world-spring-microservice
+  namespace: {{ .Values.namespace }}
+  labels:
+    ad-app: hello-world-spring-microservice
+  annotations:
+    appdirect.com/ingress.mgmt: "true"
+    appdirect.com/ingress.name: hello-world-spring-microservice
+    appdirect.com/metadata.owner: "dev-productivity@appdirect.com"
+    appdirect.com/metadata.slack: "#team-need4speed"
+    prometheus.io/scrape: "true"
+    prometheus.io/path: "/prometheus"
+    prometheus.io/port: "9091"
+    getambassador.io/config: |
+      ---
+      apiVersion: ambassador/v0
+      kind: Mapping
+      name: hello-world-spring-microservice
+      prefix: /hello-world-spring-microservice/
+      service: hello-world-spring-microservice:80
+      rewrite: /
+      timeout_ms: 3000
+spec:
+  selector:
+    ad-app: hello-world-spring-microservice
+  ports:
+    - name: http-port
+      port: 80
+      targetPort: http-port
+    - name: container-port
+      port: 9090
+      targetPort: http-port
+    - name: management-port
+      port: 9091
+      targetPort: management-port
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-world-spring-microservice-preview
+  namespace: {{ .Values.namespace }}
+  labels:
+    ad-app: hello-world-spring-microservice
+  annotations:
+    appdirect.com/metadata.owner: "dev-productivity@appdirect.com"
+    appdirect.com/metadata.slack: "#team-need4speed"
+spec:
+  selector:
+    ad-app: hello-world-spring-microservice
+  ports:
+    - name: http-port
+      port: 80
+      targetPort: http-port
+    - name: container-port
+      port: 9090
+      targetPort: http-port
+    - name: management-port
+      port: 9091
+      targetPort: management-port
+
+---
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: hello-world-spring-microservice
+  namespace: {{ .Values.namespace }}
+  labels:
+    ad-app: hello-world-spring-microservice
+  annotations:
+    appdirect.com/metadata.owner: "dev-productivity@appdirect.com"
+    appdirect.com/metadata.slack: "#team-need4speed"
+spec:
+  strategy:
+    blueGreen:
+      activeService: hello-world-spring-microservice
+      previewService: hello-world-spring-microservice-preview
+      prePromotionAnalysis:
+        templateName: hello-world-spring-microservice-smoke
+      scaleDownDelaySeconds: 15
+  replicas: {{ .Values.replicas }}
+  progressDeadlineSeconds: 300
+  selector:
+    matchLabels:
+      ad-app: hello-world-spring-microservice
+  template:
+    metadata:
+      labels:
+        ad-app: hello-world-spring-microservice
+    spec:
+      containers:
+        - name: hello-world-spring-microservice
+          image: docker.appdirect.tools/hello-world-spring-microservice/hello-world-spring-microservice:{{ .Values.imageVersion }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsUser: 1000
+            runAsNonRoot: true
+          env:
+            - name: SPRING_CONFIG_ADDITIONAL_LOCATION
+              value: "file:///spring/"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          ports:
+            - containerPort: 9090
+              name: http-port
+            - containerPort: 9091
+              name: management-port
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: management-port
+              scheme: HTTP
+            initialDelaySeconds: 60
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: management-port
+              scheme: HTTP
+            initialDelaySeconds: 60
+            timeoutSeconds: 10
+          volumeMounts:
+            - name: spring-boot-config
+              mountPath: /spring
+            - mountPath: /tmp
+              name: tmp
+      volumes:
+        - name: spring-boot-config
+          configMap:
+            name: hello-world-spring-microservice
+        - name: tmp
+          emptyDir: {}
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hello-world-spring-microservice
+  namespace: default
+  annotations:
+    appdirect.com/metadata.owner: dev-productivity@appdirect.com
+data:
+  application.yaml: |-
+    server:
+      port: 9090
+    spring:
+       sleuth:
+         enabled: true
+         log:
+           slf4j:
+             enabled: true
+         sampler:
+           probability: 1
+       zipkin:
+         enabled: true
+         baseUrl: http://zipkin-collector.tracing:9411/
+         service:
+           name: hello-world-spring-microservice
+         sender:
+           type: web
+    management:
+      endpoints:
+        metrics:
+          enabled: true
+        prometheus:
+          enabled: true
+        health:
+          enabled: true
+        web:
+          exposure:
+            include: "*"
+          base-path: /
+      metrics:
+        export:
+          prometheus:
+            enabled: true
+      security:
+        enabled: false
+      server:
+        port: 9091
+
+---
+
+apiVersion: appdirect.com/v1
+kind: PrometheusAlert
+metadata:
+  name: hello-world-spring-microservice
+  namespace: monitoring
+spec:
+  data: |
+    groups:
+      - name: Hello_World_Spring_Health_rules
+        rules:
+          - alert: HelloWorldSpringServicePodDown
+            expr: absent(up{ad_app="hello-world-spring-microservice"}) or up{ad_app="hello-world-spring-microservice"} < 1
+            for: 1m
+            labels:
+              severity: warning
+              team: need4speed
+            annotations:
+              description: Hello World Spring Service pod {{`{{$labels.kubernetes_pod_name}}`}} has fired an alert
+              summary: Hello World Spring Service pod has fired an alert
+          - alert: HelloWorldSpringServiceRequestAvgHigh
+            expr: avg(rate(http_server_requests_seconds_sum{ad_app="hello-world-spring-microservice"}[1m]) / rate(http_server_requests_seconds_count{ad_app="hello-world-spring-microservice"}[1m])) by (kubernetes_pod_name,method,uri) > 5
+            for: 1m
+            labels:
+              severity: warning
+              team: need4speed
+            annotations:
+              description: Pod {{`{{$labels.kubernetes_pod_name}}`}} response time average for `{{`{{$labels.method}}`}} {{`{{$labels.uri}}`}}` is HIGH.
+              summary: Hello World Spring Service response time average is HIGH.

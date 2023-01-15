@@ -1,0 +1,17 @@
+version: v1
+slack: team-need4speed-auto
+app:
+- name: hello-world-service
+  language: java
+  languageVersion: "11"
+  build:
+    command:
+    - ./gradlew build -x test
+  test:
+    command:
+    - ./gradlew test
+  publish:
+    appImage:
+      dockerfile:
+        artifactPath: hello-world-service/build/libs/hello-world-service-*.jar
+    

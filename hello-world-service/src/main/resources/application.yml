@@ -1,0 +1,49 @@
+server:
+  port: 9090
+  tomcat:
+    max-threads: 30
+  use-forward-headers: true
+
+spring:
+  sleuth:
+    enabled: true
+    log:
+      slf4j:
+        enabled: true
+    web:
+      skipPattern: /actuator/.*
+    sampler:
+      probability: 1
+  zipkin:
+    enabled: true
+    baseUrl: http://zipkin-collector.tracing:9411/
+    service:
+      name: hello-world-spring-microservice
+    sender:
+      type: web
+
+logging:
+  level:
+    ROOT: INFO
+
+management:
+  endpoint:
+    metrics:
+      enabled: true
+    prometheus:
+      enabled: true
+    health:
+      enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+      base-path: /
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+  server:
+    port: 9091
+

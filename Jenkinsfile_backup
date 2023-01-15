@@ -1,0 +1,216 @@
+#!/usr/bin/env groovy
+
+@Library('jenkins-shared-library') _
+
+pipeline {
+  agent { label 'build' }
+  options {
+    disableConcurrentBuilds()
+  }
+  environment {
+    VERSION = getSemver('master', 'v', env.BRANCH_NAME != 'master' ? '-SNAPSHOT' : '')
+  }
+
+  parameters {
+    // Parameters received when triggered the consumer pact change 'postWebhookPactBroker'.
+    string(name: 'CONSUMER_GITHUB_PROJECT', defaultValue: '', description: 'consumer project name for hello-world-spring-microservice')
+    string(name: 'CONSUMER_TAGS', defaultValue: '', description: 'consumer pact tags')
+    string(name: 'PROVIDER_TAGS', defaultValue: '', description: 'provider pact tags')
+    string(name: 'VERIFICATION_URL', defaultValue: '', description: 'provider result verification url')
+    string(name: 'PROVIDER_VERSION', defaultValue: '', description: 'provider pact version')
+    string(name: 'CONSUMER_VERSION', defaultValue: '', description: 'consumer pact version')
+    string(name: 'CONSUMER_NAME', defaultValue: '', description: 'consumer name')
+  }
+
+  stages {
+
+    stage('Checkout') {
+      steps {
+        checkoutWithEnv()
+      }
+    }
+
+    stage('Skip?') {
+      steps {
+        abortIfGitTagExists env.VERSION
+      }
+    }
+
+    stage('Setup') {
+      steps {
+        dockerCompose 'build --pull'
+      }
+    }
+
+    stage('Copy JAR') {
+      steps {
+        sh 'mkdir -p build/libs'
+        dockerCompose "run --rm \
+          -v '${env.WORKSPACE}/build/libs:/jenkins:rw,z' \
+          --entrypoint cp \
+          hello-world-spring-microservice \
+            /app/hello-world-service-${env.VERSION}.jar \
+            /jenkins"
+      }
+    }
+
+    stage('Unit') {
+      steps {
+        sh 'mkdir -p build hello-world-service/build report'
+        dockerCompose "run --rm \
+          -v '${env.WORKSPACE}/build:/app/build:rw,z' \
+          -v '${env.WORKSPACE}/hello-world-service/build:/app/hello-world-service/build:rw,z' \
+          -v '${env.WORKSPACE}/report:/app/report:rw,z' \
+          hello-world-spring-microservice-development"
+      }
+    }
+
+    stage('Publish Coverage') {
+      steps {
+        junit 'hello-world-service/build/test-results/**/*.xml'
+        publishHTML([
+          allowMissing         : false,
+          alwaysLinkToLastBuild: false,
+          keepAll              : false,
+          reportDir            : 'build/reports/allTests',
+          reportFiles          : 'index.html',
+          reportName           : 'Test Report',
+          reportTitles         : 'Test Report'
+        ])
+        githubSetCommitStatus([
+          repositoryName  : 'hello-world-spring-microservice',
+          commitStatusName: 'Build and Test',
+          state           : 'SUCCESS',
+          message         : 'Project is built and all tests passed.',
+          backref         : "${env.BUILD_URL}testReport/"
+        ])
+        archiveArtifacts artifacts: 'build/reports/jacoco/jacocoRootReport/html/**/*'
+        archiveArtifacts artifacts: 'build/reports/allTests/**/*'
+      }
+    }
+
+    stage('SonarQube') {
+      steps {
+        sonarScanner env.VERSION
+      }
+    }
+
+    stage('Smoke Unit') {
+      steps {
+        dockerCompose 'run --rm hello-world-spring-microservice-smoke-development'
+      }
+    }
+
+    stage('Smoke') {
+      steps {
+        dockerCompose 'up --detach --no-build hello-world-spring-microservice'
+        dockerCompose 'run --rm hello-world-spring-microservice-smoke'
+      }
+    }
+
+    stage('Contract Test') {
+      steps {
+        script {
+          //default tag is production, but if passed by prameters it overrides
+          def tags = "production"
+          if("${params.CONSUMER_TAGS}" != "" && "${params.CONSUMER_TAGS}" != "null") {
+            tags = "${params.CONSUMER_TAGS}".replaceAll(' ', '')
+          }
+
+          dockerCompose "run --rm \
+              -v '${env.WORKSPACE}/hello-world-service/build:/app/hello-world-service/build:rw,z' \
+              hello-world-spring-microservice-development -Pprovider.version=${env.VERSION} -Ppactbroker.tags=${tags} contractTest"
+
+            postProviderVerificationToConsumer([
+              consumerVersion : "${params.CONSUMER_VERSION}",
+              consumerName : "${params.CONSUMER_NAME}",
+              consumerTags : "${tags}",
+              verificationUrl : "${params.VERIFICATION_URL}",
+              consumerGithubProject : "${params.CONSUMER_GITHUB_PROJECT}"
+            ])
+        }
+      }
+      post {
+        always {
+          junit([
+            testResults      : '**/build/test-results/contractTest/**/*.xml',
+            allowEmptyResults: true
+          ])
+          publishHTML([
+            allowMissing         : false,
+            alwaysLinkToLastBuild: false,
+            keepAll              : false,
+            reportDir            : 'hello-world-service/build/reports/tests/contractTest',
+            reportFiles          : 'index.html',
+            reportName           : 'contractTestsReport',
+            reportTitles         : 'ContractTestsReport'
+          ])
+        }
+      }
+    }
+
+    stage('OpenAPI Spec') {
+      steps {
+        // Currently oasPublish does not support Yaml, converting file to JSON
+        script {
+          datas = readYaml (file: "${env.WORKSPACE}/hello-world-service/src/main/resources/api-spec.yml")
+          outJson = groovy.json.JsonOutput.toJson(datas)
+        }
+        writeFile file: "${env.WORKSPACE}/api-spec-converted.json", text: outJson, encoding: 'UTF-8'
+        oasPublish([
+          service: 'hello-world-spring-microservice',
+          file: "${env.WORKSPACE}/api-spec-converted.json",
+          dryRun: true,
+          variable: 'IS_VALID'
+        ]) {
+          githubSetCommitStatus([
+            repositoryName: 'hello-world-spring-microservice',
+            commitStatusName: 'apidoc-spec-collector/oas-validation',
+            state: IS_VALID == 'true' ? 'SUCCESS' : 'FAILURE'
+          ])
+        }
+      }
+    }
+
+    stage('Publish Docker') {
+      steps {
+        dockerPublish "docker.appdirect.tools/hello-world-spring-microservice/hello-world-spring-microservice:${env.VERSION}"
+        dockerPublish "docker.appdirect.tools/hello-world-spring-microservice/hello-world-spring-microservice-smoke:${env.VERSION}"
+      }
+    }
+
+    stage('Publish Maven') {
+      steps {
+        withCredentials([
+          usernamePassword(
+            credentialsId: 'jenkins-artifactory-credentials',
+            usernameVariable: 'ARTIFACTORY_USER',
+            passwordVariable: 'ARTIFACTORY_PASSWD'
+          )
+        ]) {
+          dockerCompose "run --rm \
+            hello-world-spring-microservice-development \
+            publish \
+            -Pversion=${env.VERSION} \
+            -Partifactory.user=${env.ARTIFACTORY_USER} \
+            -Partifactory.password=${env.ARTIFACTORY_PASSWD}"
+        }
+      }
+    }
+
+    stage('Tag') {
+      when { branch 'master' }
+      steps {
+        pushGitTag env.VERSION
+      }
+    }
+  }
+
+  post {
+    always {
+      dockerCompose 'down --volumes --remove-orphans'
+      dockerCompose 'rm --force'
+      slackBuildStatus '#team-need4speed-auto', env.SLACK_USER
+    }
+  }
+}

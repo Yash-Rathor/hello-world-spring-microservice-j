@@ -1,0 +1,42 @@
+version: 0.1.97
+name: hello-world-spring-microservice
+branch: master
+type: application
+templates:
+  - editorconfig
+  - docker
+  - jenkins
+  - sonarqube
+  - conductor
+  - smoke
+port: '9090'
+testClusters:
+  - manifests-shared.test.us-east-1
+prodClusters: []
+multiBranchDeploy: false
+testBranch: develop
+namespace: default
+instanceGroup: default
+applicationType: deployment
+healthCheck: /health
+hasPrometheus: true
+replicas: 2
+hasDatabase: false
+language: java
+languageVersion: '11'
+hasInstall: false
+hasBuild: true
+entrypoint: ./gradlew
+buildCommand: build testClasses -x test
+testCommand: test
+srcPaths: hello-world-service/src/main
+hasCoverage: true
+coveragePaths: /build/reports/jacoco/jacocoRootReport/jacocoRootReport.xml
+startCommand: bootRun
+prometheus: /prometheus
+slack: '#team-need4speed'
+spamSlack: '#team-need4speed-auto'
+teamEmail: dev-productivity@appdirect.com
+workflow: bluegreen-release
+configs: {}
+secrets: {}
